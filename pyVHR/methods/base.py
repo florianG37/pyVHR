@@ -38,7 +38,7 @@ class VHRMethod(metaclass=ABCMeta):
         
         # -- parse params
         startTime, endTime, winSize, timeStep, zeroMeanSTDnorm, BPfilter, minHz, maxHz, detrFilter, \
-        detrMethod, detrLambda = self.__readparams(**kwargs)
+        detrMethod, detrLambda, useRGBsig, useBVPsig = self.__readparams(**kwargs)
         
         fs = self.video.frameRate
         
@@ -97,51 +97,65 @@ class VHRMethod(metaclass=ABCMeta):
                 
             self.video.extractSignal(self.frameSubset, count)
 
-            # -- RGB computation  
-            RGBsig = self.video.getMeanRGB()
-            
-            # -- print RGB raw data
-            if '2' in str(self.verb):
-                printutils.multiplot(y=RGBsig, name=['ch B', 'ch R','ch G'], title='RGB raw data')
-                        
-            # -- RGBsig preprocessing
-            if zeroMeanSTDnorm:
-                RGBsig = filters.zeroMeanSTDnorm(RGBsig)      
-            if detrFilter:
-                if detrMethod == 'tarvainen':
-                    #TODO controllare il detrending di tarvainen
-                    RGBsig[0] = detrending.detrend(RGBsig[0], detrLambda)
-                    RGBsig[1] = detrending.detrend(RGBsig[1], detrLambda)
-                    RGBsig[2] = detrending.detrend(RGBsig[2], detrLambda)
-                else:
-                    RGBsig = detrend(RGBsig)
-            if BPfilter:
-                RGBsig = filters.BPfilter(RGBsig, minHz, maxHz, fs)
-            
-            # -- print postproce
-            if '2' in str(self.verb):
-                printutils.multiplot(y=RGBsig, name=['ch B', 'ch R','ch G'], title='RGB postprocessing')
-            
-            # -- apply the selected method to estimate BVP
-            rPPG = self.apply(RGBsig)
-                        
-            # BVP postprocessing 
-            startTime = np.max([0, T-winSize/self.video.frameRate])
-            bvpChunk = BVPsignal(rPPG, self.video.frameRate, startTime, minHz, maxHz, self.verb)
-            
-            # -- post processing: filtering 
-            
-            # TODO: valutare se mantenere!!
-            #bvpChunk.data = filters.BPfilter(bvpChunk.data, bvpChunk.minHz, bvpChunk.maxHz, bvpChunk.fs)
+            # temporary variable initialization
+            rPPG = np.asarray([])
+            bpmEstimated = 0
 
-            if '2' in str(self.verb):
-                bvpChunk.plot(title='BVP estimate by ' + self.methodName)
+            # -- use of RGB signals ??
+            if useRGBsig == 1 :
+                # -- RGB computation  
+                RGBsig = self.video.getMeanRGB()
+            
+                # -- print RGB raw data
+                if '2' in str(self.verb):
+                    printutils.multiplot(y=RGBsig, name=['ch B', 'ch R','ch G'], title='RGB raw data')
+                        
+                # -- RGBsig preprocessing
+                if zeroMeanSTDnorm:
+                    RGBsig = filters.zeroMeanSTDnorm(RGBsig)      
+                if detrFilter:
+                    if detrMethod == 'tarvainen':
+                        #TODO controllare il detrending di tarvainen
+                        RGBsig[0] = detrending.detrend(RGBsig[0], detrLambda)
+                        RGBsig[1] = detrending.detrend(RGBsig[1], detrLambda)
+                        RGBsig[2] = detrending.detrend(RGBsig[2], detrLambda)
+                    else:
+                        RGBsig = detrend(RGBsig)
+                if BPfilter:
+                    RGBsig = filters.BPfilter(RGBsig, minHz, maxHz, fs)
+            
+                # -- print postproce
+                if '2' in str(self.verb):
+                    printutils.multiplot(y=RGBsig, name=['ch B', 'ch R','ch G'], title='RGB postprocessing')
+            
+                # -- apply the selected method to estimate BVP
+                rPPG = self.apply(RGBsig)
+            else:
+                rPPG = self.apply(self.video)
+
+            # -- use of BVP signals ??
+            if useBVPsig == 1:           
+                # BVP postprocessing 
+                startTime = np.max([0, T-winSize/self.video.frameRate])
+                bvpChunk = BVPsignal(rPPG, self.video.frameRate, startTime, minHz, maxHz, self.verb)
+            
+                # -- post processing: filtering 
+            
+                # TODO: valutare se mantenere!!
+                #bvpChunk.data = filters.BPfilter(bvpChunk.data, bvpChunk.minHz, bvpChunk.maxHz, bvpChunk.fs)
+
+                if '2' in str(self.verb):
+                    bvpChunk.plot(title='BVP estimate by ' + self.methodName)
           
-            # -- estimate BPM by PSD
-            bvpChunk.PSD2BPM(chooseBest=True)
+                # -- estimate BPM by PSD
+                bvpChunk.PSD2BPM(chooseBest=True)
 
-            # -- save the estimate
-            bpmES.append(bvpChunk.bpm)
+                # -- save the estimate
+                bpmEstimated = bvpChunk.bpm
+            else:
+                bpmEstimated = rPPG
+
+            bpmES.append(bpmEstimated)
             timesES.append(T)
 
             # -- define the frame range for each time step            
@@ -177,6 +191,8 @@ class VHRMethod(metaclass=ABCMeta):
             m = methods.PCA(video)
         elif methodName == 'ICA':
             m = methods.ICA(video)
+        elif methodName == 'MAP_3DCNN':
+            m = methods.MAP_3DCNN(video)
         else:
             raise ValueError("Unknown method!")
         return m
@@ -234,9 +250,19 @@ class VHRMethod(metaclass=ABCMeta):
             detrMethod = kwargs['detrMethod']
         else:
             detrMethod = 'tarvainen'
+
+        if 'useRGBsig' in kwargs:
+            useRGBsig = int(kwargs['useRGBsig'])
+        else :
+            useRGBsig = 1 
+
+        if 'useBVPsig' in kwargs:
+            useBVPsig = int(kwargs['useBVPsig'])
+        else :
+            useBVPsig = 1
             
         return startTime, endTime, winSize, timeStep, zeroMeanSTDnorm, BPfilter, minHz, maxHz,\
-                detrending, detrMethod, detrLambda
+                detrending, detrMethod, detrLambda, useRGBsig, useBVPsig
     
     def RMSEerror(self, bvpGT):
         """ RMSE: """
