@@ -277,6 +277,12 @@ class Video:
         vid.release()
         return np.asarray(frames)
 
+    def cutVideo(self, startFrame, endFrame):
+        if self.processedFaces.size == 0:
+            return self.faces[startFrame:endFrame]
+        else:
+            return self.processedFaces[startFrame:endFrame]
+
     def __extractRectSignal(self, frameSubset):
         """ Extract R,G,B values on all ROIs of a frame subset """
         
