@@ -131,9 +131,14 @@ class VHRMethod(metaclass=ABCMeta):
                 # -- apply the selected method to estimate BVP
                 rPPG = self.apply(RGBsig)
             else:
+                # cut video
                 video = self.video.cutVideo(startFrame, endFrame)
-                #rPPG = np.array([80])
+
+                # apply method
                 rPPG = self.apply(video)
+
+                #memory management
+                del video
 
             # -- use of BVP signals ??
             if useBVPsig == 1:           
@@ -164,6 +169,9 @@ class VHRMethod(metaclass=ABCMeta):
             T += timeStep
             startFrame = np.max([0, int((T-RADIUS)*self.video.frameRate)])
 
+            # memory management
+            del rPPG
+            
             count += 1
 
         # set final values

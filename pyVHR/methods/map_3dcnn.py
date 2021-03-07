@@ -22,6 +22,19 @@ from pyVHR.signals.video import Video
 from .base import VHRMethod
 
 class MAP_3DCNN(VHRMethod):
+    
+    '''
+
+    Method based on the following work : 
+    title : "3D Convolutional Neural Networks for Remote Pulse Rate Measurement 
+    and Mapping from Facial Video"
+    authors : Frédéric Bousefsaf, Alain Pruski, Choubeila Maaoui
+    url : https://www.mdpi.com/2076-3417/9/20/4364
+
+    Implemented & adapted by GIGOT Florian (Student at Polytech'Tours)
+
+    '''
+
     methodName = 'MAP_3DCNN'
     
     def __init__(self, **kwargs):
@@ -29,7 +42,22 @@ class MAP_3DCNN(VHRMethod):
         self.y_step = int(kwargs['ystep'])
         self.modelFilename = str(kwargs['modelFilename'])   
         super(MAP_3DCNN, self).__init__(**kwargs)
-        
+
+    ##--------------------------------------------------------------------------------
+    #
+    # apply(self, faces) : MAIN
+    #
+    #---------------------------------------------------------------------------------
+    #
+    # self : VHRMethod
+    #
+    # faces : Video sequence submitted to the prediction (including the subject's face)
+    #
+    #---------------------------------------------------------------------------------
+    # 
+    # return : Estimation of the bpm associated with the video sequence
+    #
+    ##--------------------------------------------------------------------------------     
     def apply(self, faces):
         #load model 
         model, freq_bpm = self.loadmodel()
@@ -37,20 +65,42 @@ class MAP_3DCNN(VHRMethod):
         # manage variation in the size of inputs
         faces = self.checkNbFrames(faces, model)
 
-        #extract Green channel or Black & whrite channel
+        #extract Green channel or Black & white channel
         frames_one_channel = self.convert_video_to_table(faces, model)
     
         prediction = self.formating_data_test(model, frames_one_channel, freq_bpm)
     
         # get bpm
         bpm = self.get_bpm(prediction, freq_bpm)
+
+        # memory management
+        del model
+        del freq_bpm
+        del faces
+        del frames_one_channel
+        del prediction
         
         return np.asarray([bpm])
 
-    ##
-    ## Finding the label associated with the prediction
-    ##
-
+    ##--------------------------------------------------------------------------------
+    #
+    # get_bpm(self,prediction, freq_bpm) : Applying the formula to transform the 
+    #   prediction result into a value representing the estimated heart rate (BPM)
+    #
+    #---------------------------------------------------------------------------------
+    #
+    # self : VHRMethod
+    #
+    # prediction : array including the addition of all predictions
+    #
+    # freq_bpm : array containing the set of classes (representing each bpm) known 
+    #   by the model
+    #
+    #---------------------------------------------------------------------------------
+    # 
+    # return : bpm value calculated
+    #
+    ##-------------------------------------------------------------------------------- 
     def get_bpm(self,prediction, freq_bpm): 
         nb_bins = 0
         score = 0
@@ -62,10 +112,25 @@ class MAP_3DCNN(VHRMethod):
     
         return bpm
 
-    ##
-    ## Loading the model
-    ##
 
+    ##--------------------------------------------------------------------------------
+    #
+    # loadmodel(self) : Loading the model trained
+    #
+    #---------------------------------------------------------------------------------
+    #
+    # self : VHRMethod
+    #
+    #---------------------------------------------------------------------------------
+    # 
+    # return : 
+    #
+    # model : the model trained to make predictions
+    #
+    # freq_bpm : array containing the set of classes (representing each bpm) known 
+    #   by the model
+    #
+    ##-------------------------------------------------------------------------------- 
     def loadmodel(self):
         model = model_from_json(open(f'{self.modelFilename}/model_conv3D.json').read())
         model.load_weights(f'{self.modelFilename}/weights_conv3D.h5')
@@ -77,11 +142,26 @@ class MAP_3DCNN(VHRMethod):
         return model, freq_bpm
 
 
-    ##
-    ## Converting videoframes to a single channel array
-    ##
-
+    ##--------------------------------------------------------------------------------
+    #
+    # convert_video_to_table(self, faces ,model) : Converting videoframes to a single
+    #  channel array
+    #
+    #---------------------------------------------------------------------------------
+    #
+    # self : VHRMethod
+    #
+    # faces : Video sequence submitted to the prediction (including the subject's face)
+    #
+    # model : the model trained to make predictions
+    #
+    #---------------------------------------------------------------------------------
+    # 
+    # return : frames normalized
+    #
+    ##--------------------------------------------------------------------------------
     def convert_video_to_table(self, faces ,model):
+
         imgs = np.zeros(shape=(model.input_shape[1], self.video.cropSize[0], self.video.cropSize[1], 1))
 
         # channel extraction
@@ -93,6 +173,7 @@ class MAP_3DCNN(VHRMethod):
         # load images (imgs contains the whole video)
         for j in range(0, model.input_shape[1]):
 
+            # normalization
             if (IMAGE_CHANNELS==3):
                 temp = faces[j]/255
                 temp = temp[:,:,1]      # only the G component is currently used
@@ -102,18 +183,53 @@ class MAP_3DCNN(VHRMethod):
             imgs[j] = np.expand_dims(temp, 2)
 
         return imgs
-    ##
-    ## Checks and corrects the differences in the number of frames between the model input and the provided frames.
-    ##
+
+    ##--------------------------------------------------------------------------------
+    #
+    # checkNbFrames(self, faces, model): Checks and corrects the differences 
+    # in the number of frames between the model input and the provided frames.
+    #
+    #---------------------------------------------------------------------------------
+    #
+    # self : VHRMethod
+    #
+    # faces : Video sequence submitted to the prediction (including the subject's face)
+    #
+    # model : the model trained to make predictions
+    #
+    #---------------------------------------------------------------------------------
+    # 
+    # return : faces processed
+    #
+    ##--------------------------------------------------------------------------------
     def checkNbFrames(self, faces, model):
         if (model.input_shape[1] > len(faces)):
             faces = self.interpolation(faces,model.input_shape[1])
         return faces
     
-    ##
-    ## Formating Video / Map video
-    ##
-
+    ##--------------------------------------------------------------------------------
+    #
+    # formating_data_test(self, model, imgs , freq_bpm) : format the video at the model's
+    #  entrance standarts (including video mapping)
+    #
+    #---------------------------------------------------------------------------------
+    #
+    # self : VHRMethod
+    #
+    # faces : Video sequence submitted to the prediction (including the subject's face)
+    #
+    # imgs : frames normalised 
+    #
+    # model : the model trained to make predictions
+    #
+    # freq_bpm : array containing the set of classes (representing each bpm) known 
+    #   by the model
+    #
+    #---------------------------------------------------------------------------------
+    # 
+    # return : sum of predictions
+    #
+    ##--------------------------------------------------------------------------------
     def formating_data_test(self, model, imgs , freq_bpm):
     
         # output - sum of predictions
@@ -170,9 +286,21 @@ class MAP_3DCNN(VHRMethod):
         
         return predictions  
 
-    ##
-    ## Get the index of the maximum value of a prediction
-    ##
+    ##--------------------------------------------------------------------------------
+    #
+    # get_idx(self, h) : Get the index of the maximum value of a prediction
+    #
+    #---------------------------------------------------------------------------------
+    #
+    # self : VHRMethod
+    #
+    # h : Array (here a prediction)
+    #
+    #---------------------------------------------------------------------------------
+    # 
+    # return : index of the maximum value of an array
+    #
+    ##--------------------------------------------------------------------------------
     def get_idx(self, h):
         idx =0
         maxi = -1
@@ -183,10 +311,26 @@ class MAP_3DCNN(VHRMethod):
                 maxi = h[i]
         return idx  
 
-    ##
-    ## Making a prediction
-    ##
-
+    ##--------------------------------------------------------------------------------
+    #
+    # get_prediction(self, model, freq_bpm, xtest) :  Making a prediction
+    #
+    #---------------------------------------------------------------------------------
+    #
+    # self : VHRMethod
+    #
+    # model : the model trained to make predictions
+    #
+    # freq_bpm : array containing the set of classes (representing each bpm) known 
+    #   by the model
+    #
+    # xtest : model input
+    #
+    #---------------------------------------------------------------------------------
+    # 
+    # return : A prediction 
+    #
+    ##--------------------------------------------------------------------------------   
     def get_prediction(self, model, freq_bpm, xtest):
         idx = 0
         # model.predict
@@ -198,10 +342,24 @@ class MAP_3DCNN(VHRMethod):
         idx = self.get_idx(h[0])
         res[idx] = 1
         return res     
-
-    ##
-    ## Management of frame rate differences by interpolation
-    ## 
+ 
+    ##--------------------------------------------------------------------------------
+    #
+    # interpolation(self, faces, nb_frames_required) :  Adding frames by interpolation
+    #
+    #---------------------------------------------------------------------------------
+    #
+    # self : VHRMethod
+    #
+    # faces : Video sequence submitted to the prediction (including the subject's face)
+    #
+    # nb_frames_required : Number of missing frames
+    #
+    #---------------------------------------------------------------------------------
+    # 
+    # return : A new video sequence with the correct size to be an input of the model
+    #
+    ##--------------------------------------------------------------------------------
     def interpolation(self, faces, nb_frames_required):
         # find the number of missing images
         diff_frames = nb_frames_required - len(faces)
@@ -210,5 +368,9 @@ class MAP_3DCNN(VHRMethod):
         place_interpolation = np.random.randint(1, len(faces), size=(diff_frames))
         for p in place_interpolation:
             faces = np.insert(faces, p, faces[p], axis=0) 
+
+        # memory management
+        del place_interpolation
+
         return faces           
     
