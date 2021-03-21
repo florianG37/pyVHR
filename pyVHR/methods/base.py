@@ -38,7 +38,7 @@ class VHRMethod(metaclass=ABCMeta):
         
         # -- parse params
         startTime, endTime, winSize, timeStep, zeroMeanSTDnorm, BPfilter, minHz, maxHz, detrFilter, \
-        detrMethod, detrLambda, useRGBsig, useBVPsig = self.__readparams(**kwargs)
+        detrMethod, detrLambda, useVideo, useBVPsig = self.__readparams(**kwargs)
         
         fs = self.video.frameRate
         
@@ -101,8 +101,8 @@ class VHRMethod(metaclass=ABCMeta):
             rPPG = np.asarray([])
             bpmEstimated = 0
 
-            # -- use of RGB signals ??
-            if useRGBsig == 1 :
+            # -- use of Video ??
+            if useVideo == 0 :
                 # -- RGB computation  
                 RGBsig = self.video.getMeanRGB()
             
@@ -261,10 +261,10 @@ class VHRMethod(metaclass=ABCMeta):
         else:
             detrMethod = 'tarvainen'
 
-        if 'useRGBsig' in kwargs:
-            useRGBsig = int(kwargs['useRGBsig'])
+        if 'useVideo' in kwargs:
+            useVideo = int(kwargs['useVideo'])
         else :
-            useRGBsig = 1 
+            useVideo = 0 
 
         if 'useBVPsig' in kwargs:
             useBVPsig = int(kwargs['useBVPsig'])
@@ -272,7 +272,7 @@ class VHRMethod(metaclass=ABCMeta):
             useBVPsig = 1
             
         return startTime, endTime, winSize, timeStep, zeroMeanSTDnorm, BPfilter, minHz, maxHz,\
-                detrending, detrMethod, detrLambda, useRGBsig, useBVPsig
+                detrending, detrMethod, detrLambda, useVideo, useBVPsig
     
     def RMSEerror(self, bvpGT):
         """ RMSE: """
